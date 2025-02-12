@@ -5,6 +5,21 @@ from collections import deque
 from src.utils import Button
 from matplotlib import cm
 
+
+import sounddevice as sd
+import wave
+import scipy.signal as signal
+
+# Constants
+CHUNK = 1024 * 2
+RATE = 44100
+CHANNELS = 1
+AMPLITUDE_LIMIT = 4096
+BUTTON_COLOR = (50, 50, 150)
+HOVER_COLOR = (70, 70, 200)
+TEXT_COLOR = (255, 255, 255)
+BACKGROUND_COLOR = (20, 20, 30)
+
 class Spectrum_Visualizer:
     """
     The Spectrum_Visualizer visualizes spectral FFT data using a simple PyGame GUI
@@ -45,6 +60,32 @@ class Spectrum_Visualizer:
         self.fps_interval = 10
         self.fps = 0
         self._is_running = False
+        self.recording = False
+
+    def record_audio(self, filename="recorded_audio.wav", duration=40):
+
+        print("Recording...")
+        audio_data = sd.rec(int(duration * RATE), samplerate=RATE, channels=CHANNELS, dtype='int16')
+        sd.wait()
+        wavefile = wave.open(filename, 'wb')
+        wavefile.setnchannels(CHANNELS)
+        wavefile.setsampwidth(2)
+        wavefile.setframerate(RATE)
+        wavefile.writeframes(audio_data.tobytes())
+        wavefile.close()
+
+    def extract_white_noise(self, audio_data, fs=44100):
+        """Applies a high-pass filter to remove white noise."""
+        if len(audio_data) <= 15:
+            print("Warning: Audio data is too short for noise reduction. Skipping filter.")
+        return audio_data  # Return original data instead of raising an error.
+
+        # Design a high-pass Butterworth filter with a normalized cutoff frequency
+        b, a = signal.butter(2, 0.1 / (fs / 2), 'high')
+        return signal.filtfilt(b, a, audio_data, padlen=len(audio_data) - 1)
+
+
+
 
     def toggle_history_mode(self):
 
@@ -74,7 +115,8 @@ class Spectrum_Visualizer:
             self.bar_x_positions.append(x)
             self.fast_bars.append(fast_bar)
             self.slow_bars.append(slow_bar)
-
+      
+  
     def start(self):
         print("Starting spectrum visualizer...")
         pygame.init()
@@ -108,6 +150,7 @@ class Spectrum_Visualizer:
         self.button_height = round(0.05*self.HEIGHT)
         self.history_button  = Button(text="Toggle 2D/3D Mode", right=self.WIDTH, top=0, width=round(0.12*self.WIDTH), height=self.button_height)
         self.slow_bar_button = Button(text="Toggle Slow Bars", right=self.WIDTH, top=self.history_button.height, width=round(0.12*self.WIDTH), height=self.button_height)
+        self.record_button = Button(text="Record", right=self.WIDTH, top=self.history_button.height, width=round(0.12*self.WIDTH), height=self.button_height)
 
     def stop(self):
         print("Stopping spectrum visualizer...")
@@ -133,6 +176,22 @@ class Spectrum_Visualizer:
             if self.slow_bar_button.click():
                 self.add_slow_bars = not self.add_slow_bars
                 self.slow_features = [0]*self.ear.n_frequency_bins
+            if self.record_button.click():
+                if not self.recording:
+                    self.recording = True
+                    print("Recording started...")
+                    self.audio_data = sd.rec(int(10 * RATE), samplerate=RATE, channels=CHANNELS, dtype='int16')
+                else:
+                    self.recording = False
+                    sd.wait()  # Ensure recording is completed
+                    self.audio_data = self.extract_white_noise(self.audio_data.flatten())  # Apply noise reduction
+                    with wave.open("recorded_audio.wav", 'wb') as wavefile:
+                        wavefile.setnchannels(CHANNELS)
+                        wavefile.setsampwidth(2)
+                        wavefile.setframerate(RATE)
+                        wavefile.writeframes(self.audio_data.tobytes())
+                    print("Recording saved as recorded_audio.wav with noise reduction")
+
 
         if np.min(self.ear.bin_mean_values) > 0:
             self.frequency_bin_energies = self.avg_energy_height * self.ear.frequency_bin_energies / self.ear.bin_mean_values
@@ -179,6 +238,7 @@ class Spectrum_Visualizer:
 
         self.history_button.draw(self.screen)
         self.slow_bar_button.draw(self.screen)
+        self.record_button.draw(self.screen)
 
         pygame.display.flip()
 
