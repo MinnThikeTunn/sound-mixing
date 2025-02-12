@@ -43,3 +43,4 @@ just run `python run_FFT_analyzer.py` and play a sound on your machine!
 * The pygame.transform operations sometimes cause weird visual artifacts (boxes) for some resolution settings --> fix??
 * Remove the matplotlib dependency since it's only needed for the colormap of the vis..
 * Slow bars decay speed currently depends on how often `.get_audio_features()` is called --> fix
+# sound-mixing
