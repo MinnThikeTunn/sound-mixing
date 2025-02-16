@@ -4,13 +4,14 @@ import pygame
 from collections import deque
 from src.utils import Button
 from matplotlib import cm
-
-
+from pydub import AudioSegment
+import librosa
 import sounddevice as sd
 import wave
 import scipy.signal as signal
 
-# Constants
+
+
 CHUNK = 1024 * 2
 RATE = 44100
 CHANNELS = 1
@@ -61,19 +62,33 @@ class Spectrum_Visualizer:
         self.fps = 0
         self._is_running = False
         self.recording = False
+        
 
-    def record_audio(self, filename="recorded_audio.wav", duration=40):
+    def record_audio(self, filename="recorded_audio.wav", duration=30):
 
-        print("Recording...")
-        audio_data = sd.rec(int(duration * RATE), samplerate=RATE, channels=CHANNELS, dtype='int16')
-        sd.wait()
-        wavefile = wave.open(filename, 'wb')
-        wavefile.setnchannels(CHANNELS)
-        wavefile.setsampwidth(2)
-        wavefile.setframerate(RATE)
-        wavefile.writeframes(audio_data.tobytes())
-        wavefile.close()
+        # self.recording = False
+        #             sd.wait()  # Ensure recording is completed
+        #             self.audio_data = self.extract_white_noise(self.audio_data.flatten())  # Apply noise reduction
+        #             with wave.open("recorded_audio.wav", 'wb') as wavefile:
+        #                 wavefile.setnchannels(CHANNELS)
+        #                 wavefile.setsampwidth(2)
+        #                 wavefile.setframerate(RATE)
+        #                 wavefile.writeframes(self.audio_data.tobytes())
+        #             
 
+        audio_data = sd.rec(int(RATE * duration), samplerate=RATE, channels=CHANNELS, dtype=np.int16)
+
+        sd.wait()  # Wait for recording to complete
+        audio_data = audio_data.flatten()
+        with wave.open("recorded_audio.wav", 'wb') as wavefile:
+            wavefile.setnchannels(CHANNELS)
+            wavefile.setsampwidth(2)
+            wavefile.setframerate(RATE)
+            wavefile.writeframes(audio_data.tobytes())
+        print("Recording saved as recorded_audio.wav with noise reduction")
+
+    def slow_down(self, sound, factor):
+        return sound._spawn(sound.raw_data, overrides={"frame_rate": int(sound.frame_rate * factor)}).set_frame_rate(sound.frame_rate)
     def extract_white_noise(self, audio_data, fs=44100):
         """Applies a high-pass filter to remove white noise."""
         if len(audio_data) <= 15:
@@ -83,9 +98,6 @@ class Spectrum_Visualizer:
         # Design a high-pass Butterworth filter with a normalized cutoff frequency
         b, a = signal.butter(2, 0.1 / (fs / 2), 'high')
         return signal.filtfilt(b, a, audio_data, padlen=len(audio_data) - 1)
-
-
-
 
     def toggle_history_mode(self):
 
@@ -150,7 +162,13 @@ class Spectrum_Visualizer:
         self.button_height = round(0.05*self.HEIGHT)
         self.history_button  = Button(text="Toggle 2D/3D Mode", right=self.WIDTH, top=0, width=round(0.12*self.WIDTH), height=self.button_height)
         self.slow_bar_button = Button(text="Toggle Slow Bars", right=self.WIDTH, top=self.history_button.height, width=round(0.12*self.WIDTH), height=self.button_height)
-        self.record_button = Button(text="Record", right=self.WIDTH, top=self.history_button.height, width=round(0.12*self.WIDTH), height=self.button_height)
+        self.record_button = Button(text="Record", right=self.WIDTH, top=(self.slow_bar_button.height + self.history_button.height), width=round(0.12*self.WIDTH), height=self.button_height)
+        self.record2_button = Button(text="Overlay Record", right=self.WIDTH, top=(self.slow_bar_button.height + self.history_button.height + self.record_button.height), width=round(0.12*self.WIDTH), height=self.button_height)
+        self.record3_button = Button(text="Reverse Record", right=self.WIDTH, top=(self.slow_bar_button.height + self.history_button.height + self.record_button.height + self.record2_button.height), width=round(0.12*self.WIDTH), height=self.button_height)
+        self.record4_button = Button(text="Combine Record", right=self.WIDTH, top=(self.slow_bar_button.height + self.history_button.height + self.record_button.height + self.record2_button.height + self.record3_button.height), width=round(0.12*self.WIDTH), height=self.button_height)
+        self.record5_button = Button(text="Fade In/Fade Out", right=self.WIDTH, top=(self.slow_bar_button.height + self.history_button.height + self.record_button.height + self.record2_button.height + self.record3_button.height + self.record4_button.height), width=round(0.12*self.WIDTH), height=self.button_height)
+        self.record6_button = Button(text="Speed Up", right=self.WIDTH, top=(self.slow_bar_button.height + self.history_button.height + self.record_button.height + self.record2_button.height + self.record3_button.height + self.record4_button.height + self.record5_button.height), width=round(0.12*self.WIDTH), height=self.button_height)
+        self.record7_button = Button(text="Slow Down", right=self.WIDTH, top=(self.slow_bar_button.height + self.history_button.height + self.record_button.height + self.record2_button.height + self.record3_button.height + self.record4_button.height + self.record5_button.height + self.record5_button.height), width=round(0.12*self.WIDTH), height=self.button_height)
 
     def stop(self):
         print("Stopping spectrum visualizer...")
@@ -180,7 +198,7 @@ class Spectrum_Visualizer:
                 if not self.recording:
                     self.recording = True
                     print("Recording started...")
-                    self.audio_data = sd.rec(int(10 * RATE), samplerate=RATE, channels=CHANNELS, dtype='int16')
+                    self.audio_data = sd.rec(int(30 * RATE), samplerate=RATE, channels=CHANNELS, dtype='int16')
                 else:
                     self.recording = False
                     sd.wait()  # Ensure recording is completed
@@ -191,6 +209,73 @@ class Spectrum_Visualizer:
                         wavefile.setframerate(RATE)
                         wavefile.writeframes(self.audio_data.tobytes())
                     print("Recording saved as recorded_audio.wav with noise reduction")
+            if self.record2_button.click():
+                sound1 = AudioSegment.from_file("recorded_audio.wav", format="wav")
+                sound2 = AudioSegment.from_file("background.wav", format="wav")
+
+                needed_duration = 30_000  # 30 seconds in milliseconds
+                while len(sound2) < needed_duration:
+                    sound2 += sound2  # Repeat until it's at least 30s
+
+# Trim to exactly 30s
+                sound2 = sound2[:needed_duration]
+
+                sound2 = sound2 - 10
+
+# sound1 6 dB louder
+                sound1 = sound1 + 6
+
+# Overlay sound2 over sound1 at position 0  (use louder instead of sound1 to use the louder version)
+                overlay = sound1.overlay(sound2, position=0)
+
+
+# simple export
+                file_handle = overlay.export("overlay.wav", format="wav")
+
+            if self.record3_button.click():
+                sound1 = AudioSegment.from_file("recorded_audio.wav", format="wav")
+                reversed_audio = sound1.reverse()    
+
+                find_handle = reversed_audio.export("reverse.wav", format="wav")
+
+            if self.record4_button.click():
+                sound1 = AudioSegment.from_file("recorded_audio.wav", format="wav")
+                sound2 = AudioSegment.from_file("intro.wav", format="wav")
+
+# sound1 6 dB louder
+                louder = sound1 + 6
+
+
+# sound1, with sound2 appended (use louder instead of sound1 to append the louder version)
+                combined = sound2 + louder + sound2
+
+# simple export
+                file_handle = combined.export("combine.wav", format="wav")
+            if self.record5_button.click():
+                sound = AudioSegment.from_file("recorded_audio.wav", format="wav")
+                faded = sound.fade_in(2000).fade_out(2000)  # 2s fade
+                file_handle = faded.export("fadein.wav", format="wav")
+
+            if self.record6_button.click():
+                sound = AudioSegment.from_file("recorded_audio.wav", format="wav")
+                faster = sound.speedup(playback_speed=1.5)
+  # 2s fade
+                file_handle = faster.export("fast.wav", format="wav")
+            
+            if self.record7_button.click():
+                sound = AudioSegment.from_file("recorded_audio.wav", format="wav")
+                slower_sound = self.slow_down(sound, 0.5) 
+                slower_sound = slower_sound + 10
+
+# Export the slowed audio
+                slower_sound.export("slow.mp3", format="mp3")
+  # 2s fade
+               
+
+            
+
+
+            
 
 
         if np.min(self.ear.bin_mean_values) > 0:
@@ -239,6 +324,12 @@ class Spectrum_Visualizer:
         self.history_button.draw(self.screen)
         self.slow_bar_button.draw(self.screen)
         self.record_button.draw(self.screen)
+        self.record2_button.draw(self.screen)
+        self.record3_button.draw(self.screen)
+        self.record4_button.draw(self.screen)
+        self.record5_button.draw(self.screen)
+        self.record6_button.draw(self.screen)
+        self.record7_button.draw(self.screen)
 
         pygame.display.flip()
 
