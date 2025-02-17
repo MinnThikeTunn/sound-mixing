@@ -326,7 +326,7 @@ class Spectrum_Visualizer:
                 slower_sound = slower_sound + 10
 
 # Export the slowed audio
-                slower_sound.export("slow.mp3", format="mp3")
+                slower_sound.export("slow.wav", format="wav")
 
             if self.record8_button.click():
                 y, sr = librosa.load('recorded_audio.wav',sr=None)
