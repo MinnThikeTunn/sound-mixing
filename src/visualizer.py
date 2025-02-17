@@ -9,6 +9,13 @@ import librosa
 import sounddevice as sd
 import wave
 import scipy.signal as signal
+import matplotlib.pyplot as plt
+import scipy.fftpack as fft
+from scipy.signal import medfilt
+import soundfile as sf
+
+
+
 
 
 
@@ -62,9 +69,68 @@ class Spectrum_Visualizer:
         self.fps = 0
         self._is_running = False
         self.recording = False
+        self.audio_data = []
+        self.stream = None
+
+    def start_recording(self):
+        """Start recording audio indefinitely."""
+        if not self.recording:
+            self.recording = True
+            self.audio_data = []  # Reset audio data buffer
+            print("Recording started...")
+            # Open an input stream with a callback function
+            self.stream = sd.InputStream(
+                samplerate=RATE,
+                channels=CHANNELS,
+                dtype='int16',
+                callback=self.audio_callback
+            )
+            self.stream.start()
+
+    def stop_recording(self):
+        """Stop recording and save the audio data to a file."""
+        if self.recording:
+            self.recording = False
+            if self.stream:
+                self.stream.stop()
+                self.stream.close()
+                self.stream = None
+            # Process and save the recorded audio data
+            if self.audio_data:
+                audio_array = np.concatenate(self.audio_data, axis=0)
+                audio_array = self.extract_white_noise(audio_array.flatten())
+                temp_filename = "temp_recorded.wav"
+                with wave.open(temp_filename, 'wb') as wavefile:
+                    wavefile.setnchannels(CHANNELS)
+                    wavefile.setsampwidth(2)
+                    wavefile.setframerate(RATE)
+                    wavefile.writeframes(audio_array.tobytes())
+                audio = AudioSegment.from_wav(temp_filename)
+                audio = audio + 15 # Increase volume
+
+                # Save final audio file
+                output_filename = "recorded_audio.wav"
+                audio.export(output_filename, format="wav")
+
+                print(f"Recording saved as {output_filename} with noise reduction and volume boost.")
+
+    def audio_callback(self, indata, frames, time, status):
+        """Callback function to capture audio data."""
+        if self.recording:
+            self.audio_data.append(indata.copy())
+
+    def extract_white_noise(self, audio_data, fs=44100):
+        """Applies a high-pass filter to remove white noise."""
+        if len(audio_data) <= 15:
+            print("Warning: Audio data is too short for noise reduction. Skipping filter.")
+            return audio_data
+        # Design a high-pass Butterworth filter
+        b, a = signal.butter(2, 0.1 / (fs / 2), 'high')
+        return signal.filtfilt(b, a, audio_data, padlen=len(audio_data) - 1)
+
         
 
-    def record_audio(self, filename="recorded_audio.wav", duration=30):
+    def record_audio(self, filename="recorded_audio.wav", duration=None):
 
         # self.recording = False
         #             sd.wait()  # Ensure recording is completed
@@ -169,6 +235,8 @@ class Spectrum_Visualizer:
         self.record5_button = Button(text="Fade In/Fade Out", right=self.WIDTH, top=(self.slow_bar_button.height + self.history_button.height + self.record_button.height + self.record2_button.height + self.record3_button.height + self.record4_button.height), width=round(0.12*self.WIDTH), height=self.button_height)
         self.record6_button = Button(text="Speed Up", right=self.WIDTH, top=(self.slow_bar_button.height + self.history_button.height + self.record_button.height + self.record2_button.height + self.record3_button.height + self.record4_button.height + self.record5_button.height), width=round(0.12*self.WIDTH), height=self.button_height)
         self.record7_button = Button(text="Slow Down", right=self.WIDTH, top=(self.slow_bar_button.height + self.history_button.height + self.record_button.height + self.record2_button.height + self.record3_button.height + self.record4_button.height + self.record5_button.height + self.record5_button.height), width=round(0.12*self.WIDTH), height=self.button_height)
+        self.record8_button = Button(text="Remove background noise", right=self.WIDTH, top=(self.slow_bar_button.height + self.history_button.height + self.record_button.height + self.record2_button.height + self.record3_button.height + self.record4_button.height + self.record5_button.height + self.record5_button.height + self.record7_button.height), width=round(0.12*self.WIDTH), height=self.button_height)
+    # This method is called to clean up resources when the visualizer is finished
 
     def stop(self):
         print("Stopping spectrum visualizer...")
@@ -196,19 +264,9 @@ class Spectrum_Visualizer:
                 self.slow_features = [0]*self.ear.n_frequency_bins
             if self.record_button.click():
                 if not self.recording:
-                    self.recording = True
-                    print("Recording started...")
-                    self.audio_data = sd.rec(int(30 * RATE), samplerate=RATE, channels=CHANNELS, dtype='int16')
+                    self.start_recording()
                 else:
-                    self.recording = False
-                    sd.wait()  # Ensure recording is completed
-                    self.audio_data = self.extract_white_noise(self.audio_data.flatten())  # Apply noise reduction
-                    with wave.open("recorded_audio.wav", 'wb') as wavefile:
-                        wavefile.setnchannels(CHANNELS)
-                        wavefile.setsampwidth(2)
-                        wavefile.setframerate(RATE)
-                        wavefile.writeframes(self.audio_data.tobytes())
-                    print("Recording saved as recorded_audio.wav with noise reduction")
+                    self.stop_recording()
             if self.record2_button.click():
                 sound1 = AudioSegment.from_file("recorded_audio.wav", format="wav")
                 sound2 = AudioSegment.from_file("background.wav", format="wav")
@@ -217,19 +275,19 @@ class Spectrum_Visualizer:
                 while len(sound2) < needed_duration:
                     sound2 += sound2  # Repeat until it's at least 30s
 
-# Trim to exactly 30s
+            # Trim to exactly 30s
                 sound2 = sound2[:needed_duration]
 
                 sound2 = sound2 - 10
 
-# sound1 6 dB louder
+            # sound1 6 dB louder
                 sound1 = sound1 + 6
 
-# Overlay sound2 over sound1 at position 0  (use louder instead of sound1 to use the louder version)
+            # Overlay sound2 over sound1 at position 0  (use louder instead of sound1 to use the louder version)
                 overlay = sound1.overlay(sound2, position=0)
 
 
-# simple export
+            # simple export
                 file_handle = overlay.export("overlay.wav", format="wav")
 
             if self.record3_button.click():
@@ -269,6 +327,17 @@ class Spectrum_Visualizer:
 
 # Export the slowed audio
                 slower_sound.export("slow.mp3", format="mp3")
+
+            if self.record8_button.click():
+                y, sr = librosa.load('recorded_audio.wav',sr=None)
+                S_full, phase = librosa.magphase(librosa.stft(y))
+                noise_power = np.mean(S_full[:, :int(sr*0.1)], axis=1)
+                mask = S_full > noise_power[:, None]
+                mask = mask.astype(float)
+                mask = medfilt(mask, kernel_size=(1,5))
+                S_clean = S_full * mask
+                y_clean = librosa.istft(S_clean * phase)
+                sf.write('clean.wav',y_clean, sr)
   # 2s fade
                
 
@@ -330,6 +399,7 @@ class Spectrum_Visualizer:
         self.record5_button.draw(self.screen)
         self.record6_button.draw(self.screen)
         self.record7_button.draw(self.screen)
+        self.record8_button.draw(self.screen)
 
         pygame.display.flip()
 
